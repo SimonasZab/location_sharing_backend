@@ -1,0 +1,49 @@
+﻿using location_sharing_backend.Models;
+using MongoDB.Driver;
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace location_sharing_backend.Services {
+	public class ConnectionService : ServiceBase<Connection>{
+        public ConnectionService(IDatabaseSettings settings) : base(settings, settings.ConnectionsCollectionName) {}
+
+        public enum GetListConnectionTypeFilter {
+            REQUESTS_SENT,
+            REQUESTS_RECEIVED,
+            FRIENDS,
+            BLOCKS
+        }
+
+        public async Task<List<Connection>> GetList(string userId, int? pageOffset, int? pageSize, GetListConnectionTypeFilter? type) {
+            if (type == GetListConnectionTypeFilter.REQUESTS_SENT) {
+                return await collection.Find(x => x.User1.Id == userId && x.Type == ConnectionType.REQUEST).Skip(pageOffset).Limit(pageSize).ToListAsync();
+            } else if (type == GetListConnectionTypeFilter.REQUESTS_RECEIVED) {
+                return await collection.Find(x => x.User1.Id == userId && x.Type == ConnectionType.REQUEST).Skip(pageOffset).Limit(pageSize).ToListAsync();
+            } else if (type == GetListConnectionTypeFilter.FRIENDS) {
+                return await collection.Find(x => (x.User1.Id == userId || x.User2.Id == userId) && x.Type == ConnectionType.FRIENDS).Skip(pageOffset).Limit(pageSize).ToListAsync();
+            }
+            return null;
+        }
+
+        public async Task<Connection> GetByInitiatorAndReceiver(string initiatorId, string receiverId) {
+            return await collection.Find(x => x.User1.Id == initiatorId && x.User2.Id == receiverId).FirstOrDefaultAsync();
+        }
+
+        public async Task<Connection> GetByUsers(string user1Id, string user2Id) {
+            return await collection.Find(x =>
+                (x.User1.Id == user1Id && x.User2.Id == user2Id) ||
+                (x.User1.Id == user2Id && x.User2.Id == user1Id)
+            ).FirstOrDefaultAsync();
+        }
+
+        public bool Exists(User user1, User user2) {
+            return collection.CountDocuments(x =>
+                (x.User1.Id == user1.Id && x.User2.Id == user2.Id) ||
+                (x.User1.Id == user2.Id && x.User2.Id == user1.Id)
+            ) > 0;
+        }
+    }
+}
