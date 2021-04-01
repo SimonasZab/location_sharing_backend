@@ -5,24 +5,18 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
+using static location_sharing_backend.IOModels.ConnectionModels;
 
 namespace location_sharing_backend.Services {
 	public class ConnectionService : ServiceBase<Connection>{
         public ConnectionService(IDatabaseSettings settings) : base(settings, settings.ConnectionsCollectionName) {}
 
-        public enum GetListConnectionTypeFilter {
-            REQUESTS_SENT,
-            REQUESTS_RECEIVED,
-            FRIENDS,
-            BLOCKS
-        }
-
-        public async Task<List<Connection>> GetList(string userId, int? pageOffset, int? pageSize, GetListConnectionTypeFilter? type) {
-            if (type == GetListConnectionTypeFilter.REQUESTS_SENT) {
+        public async Task<List<Connection>> GetList(string userId, int? pageOffset, int? pageSize, GetListTypeFilter? type) {
+            if (type == GetListTypeFilter.REQUESTS_SENT) {
                 return await collection.Find(x => x.User1.Id == userId && x.Type == ConnectionType.REQUEST).Skip(pageOffset).Limit(pageSize).ToListAsync();
-            } else if (type == GetListConnectionTypeFilter.REQUESTS_RECEIVED) {
+            } else if (type == GetListTypeFilter.REQUESTS_RECEIVED) {
                 return await collection.Find(x => x.User1.Id == userId && x.Type == ConnectionType.REQUEST).Skip(pageOffset).Limit(pageSize).ToListAsync();
-            } else if (type == GetListConnectionTypeFilter.FRIENDS) {
+            } else if (type == GetListTypeFilter.FRIENDS) {
                 return await collection.Find(x => (x.User1.Id == userId || x.User2.Id == userId) && x.Type == ConnectionType.FRIENDS).Skip(pageOffset).Limit(pageSize).ToListAsync();
             }
             return null;

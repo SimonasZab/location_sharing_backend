@@ -1,18 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.Security.Claims;
-using System.Threading.Tasks;
+﻿using System.Threading.Tasks;
 using location_sharing_backend.Models;
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using System.Net;
 using APIUtils;
 using location_sharing_backend.Backends;
 using location_sharing_backend.Services;
+using static location_sharing_backend.IOModels.AuthModels;
+using System;
 
 namespace location_sharing_backend.Controllers {
 	[ApiController]
@@ -26,21 +20,9 @@ namespace location_sharing_backend.Controllers {
 			secrets = _secrets;
 		}
 
-		public class RegistrationData {
-			[Required]
-			[StringLength(30, MinimumLength = 5)]
-			public string Username { get; set; }
-			[Required]
-			[StringLength(30, MinimumLength = 8)]
-			public string Password { get; set; }
-			[Required]
-			[EmailAddress]
-			public string Email { get; set; }
-			public string? ProfilePhotoURL { get; set; }
-		}
-
 		[HttpPost("register")]
-		public async Task<ActionResult> Register(RegistrationData registartionData) {
+		public async Task<ActionResult> Register(RegisterIn registartionData) {
+			registartionData.Validate();
 			if (await userService.UserExists(registartionData.Username, registartionData.Email)) {
 				return BadRequest();
 			}
@@ -55,17 +37,9 @@ namespace location_sharing_backend.Controllers {
 			return Ok();
 		}
 
-		public class LoginnData {
-			[Required]
-			[StringLength(30, MinimumLength = 5)]
-			public string Username { get; set; }
-			[Required]
-			[StringLength(30, MinimumLength = 8)]
-			public string Password { get; set; }
-		}
-
 		[HttpPost("login")]
-		public async Task<ActionResult> Login(LoginnData loginData) {
+		public async Task<ActionResult> Login(LoginIn loginData) {
+			loginData.Validate();
 			if (User.Identity != null && User.Identity.IsAuthenticated) {
 				throw new APIException(APIErrorCode.ALREADY_LOGGED_IN);
 			}
@@ -80,20 +54,33 @@ namespace location_sharing_backend.Controllers {
 				return BadRequest();
 			}
 
-			var claims = new List<Claim>{
-				new Claim(ClaimTypes.Name, user.Username),
-				new Claim("UserId", user.Id),
-			};
-			await Common.cookieLogin(claims, false, HttpContext);
+			LoginOut loginOut = new LoginOut(user, AuthBackend.GenerateJwtTokens(user, secrets, loginData.Persist, Response));
+			return Ok(loginOut);
+		}
 
+		[HttpPost("logout")]
+		public IActionResult Logout() {
+			Response.Cookies.Delete(secrets.AccessTokenCookieName);
+			CookieOptions rtOptions = new CookieOptions();
+			rtOptions.Path = "/api/auth";
+			Response.Cookies.Delete(secrets.RefreshTokenCookieName, rtOptions);
 			return Ok();
 		}
 
-		[Authorize]
-		[HttpPost("logout")]
-		public async Task<IActionResult> logout() {
-			await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-			return Ok();
+		[HttpPost("refresh")]
+		public async Task<IActionResult> RefreshToken() {
+			if (User.Identity != null && User.Identity.IsAuthenticated) {
+				throw new APIException(APIErrorCode.ALREADY_LOGGED_IN);
+			}
+			HttpContext.Request.Cookies.TryGetValue(secrets.RefreshTokenCookieName, out string? refreshToken);
+			if (refreshToken == null) {
+				return BadRequest();
+			}
+			DateTime? accesTokenExpirationDate = await AuthBackend.RefreshAccessToken(refreshToken, secrets, userService, Response);
+			if (accesTokenExpirationDate == null) {
+				return BadRequest();
+			}
+			return Ok(new RefreshOut(accesTokenExpirationDate.Value));
 		}
 	}
 }

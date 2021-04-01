@@ -7,41 +7,31 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using static location_sharing_backend.IOModels.LocationModels;
 
 namespace location_sharing_backend.Controllers {
 	[ApiController]
 	[Route(Settings.URL_PREFIX + "[controller]")]
 	public class LocationController : ControllerBase {
-		private readonly LocationService _locationService;
-		private readonly UserShareService _userShareService;
+		private readonly IDatabaseSettings databaseSettings;
+		private readonly LocationService locationService;
+		private readonly UserShareService userShareService;
 
-		public LocationController(LocationService locationService, UserShareService userShareService) {
-			_locationService = locationService;
-			_userShareService = userShareService;
-		}
-
-		public class GetLocationsIn {
-			
-		}
-
-		public class GetLocationsOut {
-			public class UserLocation {
-				public string UserId { get; set; }
-				public float Longitude { get; set; }
-				public float Latitude { get; set; }
-			}
-			public List<UserLocation> UserLocations { get; set; } = new List<UserLocation>();
+		public LocationController(IDatabaseSettings _databaseSettings, LocationService _locationService, UserShareService _userShareService) {
+			databaseSettings = _databaseSettings;
+			locationService = _locationService;
+			userShareService = _userShareService;
 		}
 
 		[HttpGet]
 		public async Task<ActionResult<GetLocationsOut>> GetLocationsSharedWithCurrentUser() {
-			string currentUserId = UserBackend.GetUserIdFromClaims(User);
-			List<UserShare> userShares = await _userShareService.GetUserLocationsSharedWithUser(currentUserId);
+			AuthClaims authClaims = AuthClaims.ParseClaimsPrincipal(User);
+			List<UserShare> userShares = await userShareService.GetUserLocationsSharedWithUser(authClaims.UserId);
 			List<string> locationIds = new List<string>();
 			foreach (UserShare item in userShares) {
 				locationIds.Add(item.SharedObj.Id.AsString);
 			}
-			List<Location> locations = await _locationService.GetByIds(locationIds);
+			List<Location> locations = await locationService.GetByIds(locationIds);
 
 			GetLocationsOut getLocationsOut = new GetLocationsOut();
 			foreach (Location item in locations) {
@@ -57,20 +47,15 @@ namespace location_sharing_backend.Controllers {
 			return Ok(getLocationsOut);
 		}
 
-		public class CurrentUserLocationIn {
-			public float Latitude { get; set; }
-			public float Longitude { get; set; }
-		}
-
 		[HttpPost]
-		public IActionResult UpdateCurrentUserLocation([FromBody]CurrentUserLocationIn currentUserLocationIn) {
-			string currentUserId = UserBackend.GetUserIdFromClaims(User);
+		public IActionResult UpdateCurrentUserLocation([FromBody] CurrentUserLocationIn currentUserLocationIn) {
+			AuthClaims authClaims = AuthClaims.ParseClaimsPrincipal(User);
 			Location location = new Location() {
 				Latitude = currentUserLocationIn.Latitude,
 				Longitude = currentUserLocationIn.Longitude,
-				LinkedObj = new MongoDBRef("Users", currentUserId)
+				LinkedObj = new MongoDBRef(databaseSettings.UsersCollectionName, authClaims.UserId)
 			};
-			_locationService.CreateOrUpdate(location);
+			locationService.CreateOrUpdate(location);
 			return Ok();
 		}
 	}

@@ -20,10 +20,5 @@ namespace location_sharing_backend.Services {
         public async Task<User> GetByUsername(string username) {
             return await (await collection.FindAsync(x => x.Username == username)).FirstOrDefaultAsync();
         }
-
-        public async Task<User> GetByClaims(ClaimsPrincipal claimsPrincipal) {
-            string userId = UserBackend.GetUserIdFromClaims(claimsPrincipal);
-            return await (await collection.FindAsync(x => x.Id == userId)).FirstOrDefaultAsync();
-        }
     }
 }

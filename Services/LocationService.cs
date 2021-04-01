@@ -10,13 +10,13 @@ namespace location_sharing_backend.Services {
 		public LocationService(IDatabaseSettings settings) : base(settings, settings.LocationsCollectionName) { }
 
 		public async Task<Location> GetByUserId(string userId) {
-			return await collection.Find(x => x.LinkedObj.CollectionName == "Users" && x.LinkedObj.Id == userId).FirstOrDefaultAsync();
+			return await collection.Find(x => x.LinkedObj.CollectionName == settings.UsersCollectionName && x.LinkedObj.Id == userId).FirstOrDefaultAsync();
 		}
 
 		public void CreateOrUpdate(Location location) {
 			ReplaceOptions options = new ReplaceOptions();
 			options.IsUpsert = true;
-			collection.ReplaceOne(x => x.LinkedObj.CollectionName == "Users" && x.LinkedObj.Id == location.LinkedObj.Id, location, options);
+			collection.ReplaceOne(x => x.LinkedObj.CollectionName == settings.UsersCollectionName && x.LinkedObj.Id == location.LinkedObj.Id, location, options);
 		}
 	}
 }

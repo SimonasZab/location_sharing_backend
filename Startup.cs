@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -8,7 +7,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.OpenApi.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -18,6 +16,8 @@ using Microsoft.AspNetCore.Mvc.Formatters;
 using Microsoft.Extensions.Options;
 using location_sharing_backend.Models;
 using location_sharing_backend.Services;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
 
 namespace location_sharing_backend {
 	public class Startup {
@@ -38,17 +38,31 @@ namespace location_sharing_backend {
 					});
 			});*/
 
-			services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme).AddCookie(options =>
-			{
-				options.Events.OnRedirectToLogin = context =>
-				{
-					context.Response.StatusCode = 401;
-					return Task.CompletedTask;
+			var secrets = Configuration.GetSection(nameof(Secrets)).Get<Secrets>();
+
+			services.AddAuthentication(options => {
+				options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+				options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
+				options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+			}).AddJwtBearer(jwt => {
+				var key = secrets.JWTSecret;
+
+				jwt.SaveToken = true;
+				jwt.TokenValidationParameters = new TokenValidationParameters {
+					ValidateIssuerSigningKey = true, // this will validate the 3rd part of the jwt token using the secret that we added in the appsettings and verify we have generated the jwt token
+					IssuerSigningKey = new SymmetricSecurityKey(key), // Add the secret key to our Jwt encryption
+					ValidateIssuer = false,
+					ValidateAudience = false,
+					RequireExpirationTime = false,
+					ValidateLifetime = true
+				};
+				jwt.Events = new JwtBearerEvents {
+					OnMessageReceived = context => {
+						context.Token = context.Request.Cookies[secrets.AccessTokenCookieName];
+						return Task.CompletedTask;
+					}
 				};
 			});
-
-			//var secrets = Configuration.GetSection(nameof(Secrets)).Get<Secrets>();
-			//Settings.SALT = secrets.SALT;
 
 			services.Configure<Secrets>(Configuration.GetSection(nameof(Secrets)));
 			services.AddSingleton<ISecrets>(sp => sp.GetRequiredService<IOptions<Secrets>>().Value);
@@ -83,11 +97,12 @@ namespace location_sharing_backend {
 
 			//app.UseHttpsRedirection();
 
-			/*var cookiePolicyOptions = new CookiePolicyOptions {
-				Secure = CookieSecurePolicy.None,
-				MinimumSameSitePolicy = SameSiteMode.None,
+			var cookiePolicyOptions = new CookiePolicyOptions {
+				Secure = CookieSecurePolicy.Always,
+				MinimumSameSitePolicy = SameSiteMode.Strict,
+				HttpOnly = Microsoft.AspNetCore.CookiePolicy.HttpOnlyPolicy.Always
 			};
-			app.UseCookiePolicy(cookiePolicyOptions);*/
+			app.UseCookiePolicy(cookiePolicyOptions);
 
 			app.UseRouting();
 

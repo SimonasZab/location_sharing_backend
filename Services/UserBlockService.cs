@@ -6,14 +6,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using static location_sharing_backend.Services.ConnectionService;
+using static location_sharing_backend.IOModels.ConnectionModels;
 
 namespace location_sharing_backend.Services {
 	public class UserBlockService : ServiceBase<UserBlock> {
         public UserBlockService(IDatabaseSettings settings) : base(settings, settings.UserBlocksCollectionName) {}
 
-        public async Task<List<UserBlock>> GetList(string userId, int? pageOffset, int? pageSize, GetListConnectionTypeFilter? type) {
-            if (type == GetListConnectionTypeFilter.BLOCKS) {
+        public async Task<List<UserBlock>> GetList(string userId, int? pageOffset, int? pageSize, GetListTypeFilter? type) {
+            if (type == GetListTypeFilter.BLOCKS) {
                 return await collection.Find(x => x.Blocker.Id == userId).Skip(pageOffset).Limit(pageSize).ToListAsync();
             }
             return null;

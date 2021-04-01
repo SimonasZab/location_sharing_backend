@@ -10,7 +10,10 @@ namespace location_sharing_backend.Services {
 		public UserShareService(IDatabaseSettings settings) : base(settings, settings.UserSharesCollectionName) { }
 
 		public async Task<List<UserShare>> GetUserLocationsSharedWithUser(string userId) {
-			return await collection.Find(x => x.Receiver.CollectionName == "Users" && x.Receiver.Id == userId && x.SharedObj.CollectionName == "Locations").ToListAsync();
+			return await collection.Find(
+				x => x.Receiver.CollectionName == settings.UsersCollectionName &&
+				x.Receiver.Id == userId && x.SharedObj.CollectionName == settings.LocationsCollectionName
+			).ToListAsync();
 		}
 	}
 }

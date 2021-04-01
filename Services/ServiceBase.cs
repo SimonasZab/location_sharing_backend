@@ -7,9 +7,11 @@ using System.Threading.Tasks;
 
 namespace location_sharing_backend.Services {
 	public class ServiceBase<T> where T : Entity {
+        protected readonly IDatabaseSettings settings;
         protected readonly IMongoCollection<T> collection;
 
-        public ServiceBase(IDatabaseSettings settings, string collectionName) {
+        public ServiceBase(IDatabaseSettings _settings, string collectionName) {
+            settings = _settings;
             var client = new MongoClient(settings.ConnectionString);
             var database = client.GetDatabase(settings.DatabaseName);
 

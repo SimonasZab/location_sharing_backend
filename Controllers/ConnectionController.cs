@@ -9,62 +9,47 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading.Tasks;
+using static location_sharing_backend.IOModels.ConnectionModels;
 
 namespace location_sharing_backend.Controllers {
 	[ApiController]
 	[Route(Settings.URL_PREFIX + "[controller]")]
 	public class ConnectionController : ControllerBase {
-		private readonly ConnectionService _connectionService;
-		private readonly UserBlockService _userBlockService;
-		private readonly UserService _userService;
-		public ConnectionController(UserBlockService userBlockService, ConnectionService connectionService, UserService userService) {
-			_userBlockService = userBlockService;
-			_connectionService = connectionService;
-			_userService = userService;
-		}
-
-		public class GetListIn {
-			[Required]
-			public int? PageOffset { get; set; }
-			[Required]
-			public int? PageSize { get; set; }
-			[Required]
-			public ConnectionService.GetListConnectionTypeFilter? Type { get; set; }
-		}
-
-		public class GetListOut {
-			public class UserData{
-				public string Id { get; set; }
-				public string Username { get; set; }
-				public string ProfilePhotoURL { get; set; }
-			}
-			public List<UserData> Users { get; set; } = new List<UserData>();
+		private readonly IDatabaseSettings databaseSettings;
+		private readonly ConnectionService connectionService;
+		private readonly UserBlockService userBlockService;
+		private readonly UserService userService;
+		public ConnectionController(IDatabaseSettings _databaseSettings,UserBlockService _userBlockService, ConnectionService _connectionService, UserService _userService) {
+			databaseSettings = _databaseSettings;
+			userBlockService = _userBlockService;
+			connectionService = _connectionService;
+			userService = _userService;
 		}
 
 		[HttpGet]
 		public async Task<ActionResult<GetListOut>> GetCurrentUserConnectionsList([FromQuery] GetListIn getListIn) {
-			string currentUserId = UserBackend.GetUserIdFromClaims(User);
+			AuthClaims authClaims = AuthClaims.ParseClaimsPrincipal(User);
 			GetListOut getListOut = new GetListOut();
 			List<string> userIds = new List<string>();
-			if (getListIn.Type == ConnectionService.GetListConnectionTypeFilter.REQUESTS_SENT ||
-				getListIn.Type == ConnectionService.GetListConnectionTypeFilter.REQUESTS_RECEIVED ||
-				getListIn.Type == ConnectionService.GetListConnectionTypeFilter.FRIENDS) {
-				List<Connection> connections = await _connectionService.GetList(currentUserId, getListIn.PageOffset, getListIn.PageSize, getListIn.Type);
+			if (getListIn.Type == GetListTypeFilter.REQUESTS_SENT ||
+				getListIn.Type == GetListTypeFilter.REQUESTS_RECEIVED ||
+				getListIn.Type == GetListTypeFilter.FRIENDS) {
+				List<Connection> connections = await connectionService.GetList(authClaims.UserId, getListIn.PageOffset, getListIn.PageSize, getListIn.Type);
 				foreach (Connection item in connections) {
-					if (item.User1.Id.AsString != currentUserId) {
+					if (item.User1.Id.AsString != authClaims.UserId) {
 						userIds.Add(item.User1.Id.AsString);
 					}
-					if (item.User2.Id.AsString != currentUserId) {
+					if (item.User2.Id.AsString != authClaims.UserId) {
 						userIds.Add(item.User2.Id.AsString);
 					}
 				}
-			} else if (getListIn.Type == ConnectionService.GetListConnectionTypeFilter.BLOCKS) {
-				List<UserBlock> userBlocks = await _userBlockService.GetList(currentUserId, getListIn.PageOffset, getListIn.PageSize, getListIn.Type);
+			} else if (getListIn.Type == GetListTypeFilter.BLOCKS) {
+				List<UserBlock> userBlocks = await userBlockService.GetList(authClaims.UserId, getListIn.PageOffset, getListIn.PageSize, getListIn.Type);
 				foreach (UserBlock item in userBlocks) {
 					userIds.Add(item.BlockedUser.Id.AsString);
 				}
 			}
-			List<User> users = await _userService.GetByIds(userIds);
+			List<User> users = await userService.GetByIds(userIds);
 			foreach (User item in users) {
 				getListOut.Users.Add(new GetListOut.UserData() {
 					Id = item.Id,
@@ -74,33 +59,30 @@ namespace location_sharing_backend.Controllers {
 			}
 			return Ok(getListOut);
 		}
-		
-		public class FriendRequestData {
-			public string ReceiverUsername { get; set; }
-		}
 
 		[HttpPost("request")]
-		public async Task<IActionResult> RequestConnection(FriendRequestData friendRequestData) {
-			User receiver = await _userService.GetByUsername(friendRequestData.ReceiverUsername);
+		public async Task<IActionResult> RequestConnection(RequestConnectionIn friendRequestData) {
+			User receiver = await userService.GetByUsername(friendRequestData.ReceiverUsername);
 			if (receiver == null) {
 				return BadRequest();
 			}
 
-			User initiator = await _userService.GetByClaims(User);
+			AuthClaims authClaims = AuthClaims.ParseClaimsPrincipal(User);
+			User initiator = await userService.Get(authClaims.UserId);
 
 			if (receiver.Id == initiator.Id) {
 				return BadRequest();
 			}
 
-			if (_userBlockService.Exists(receiver.Id, initiator.Id)) {
+			if (userBlockService.Exists(receiver.Id, initiator.Id)) {
 				return BadRequest();
 			}
 
-			Connection existingConnection = await _connectionService.GetByUsers(initiator.Id, receiver.Id);
+			Connection existingConnection = await connectionService.GetByUsers(initiator.Id, receiver.Id);
 			if (existingConnection != null) {
 				if (existingConnection.Type == ConnectionType.REQUEST && (existingConnection.User1.Id == receiver.Id && existingConnection.User2.Id == initiator.Id)) {
 					existingConnection.Type = ConnectionType.FRIENDS;
-					_connectionService.Update(existingConnection);
+					connectionService.Update(existingConnection);
 					return Ok();
 				} else {
 					return BadRequest();
@@ -108,34 +90,24 @@ namespace location_sharing_backend.Controllers {
 			}
 
 			Connection connection = new Connection() {
-				User1 = new MongoDBRef("Users", receiver.Id),
-				User2 = new MongoDBRef("Users", initiator.Id),
+				User1 = new MongoDBRef(databaseSettings.UsersCollectionName, receiver.Id),
+				User2 = new MongoDBRef(databaseSettings.UsersCollectionName, initiator.Id),
 				Type = ConnectionType.REQUEST
 			};
-			_connectionService.Create(connection);
+			connectionService.Create(connection);
 
 			return Ok();
 		}
 
-		public class ConnectionUpdateDataIn {
-			public string OtherUserId { get; set; }
-			public enum CAction {
-				ACCEPT,
-				DENY,
-				BLOCK,
-				UNBLOCK
-			}
-			public CAction Action { get; set; }
-		}
-
 		[HttpPost("update")]
 		public async Task<IActionResult> Update(ConnectionUpdateDataIn connectionUpdateDataIn) {
-			User otherUser = await _userService.Get(connectionUpdateDataIn.OtherUserId);
+			User otherUser = await userService.Get(connectionUpdateDataIn.OtherUserId);
 			if (otherUser == null) {
 				return BadRequest();
 			}
 
-			User currentUser = await _userService.GetByClaims(User);
+			AuthClaims authClaims = AuthClaims.ParseClaimsPrincipal(User);
+			User currentUser = await userService.Get(authClaims.UserId);
 
 			if (otherUser.Id == currentUser.Id) {
 				return BadRequest();
@@ -143,53 +115,53 @@ namespace location_sharing_backend.Controllers {
 
 			switch (connectionUpdateDataIn.Action) {
 				case ConnectionUpdateDataIn.CAction.ACCEPT: {
-						Connection connection = await _connectionService.GetByInitiatorAndReceiver(otherUser.Id, currentUser.Id);
+						Connection connection = await connectionService.GetByInitiatorAndReceiver(otherUser.Id, currentUser.Id);
 						if (connection == null) {
 							return BadRequest();
 						}
 						connection.Type = ConnectionType.FRIENDS;
-						_connectionService.Update(connection);
+						connectionService.Update(connection);
 					}
 					break;
 				case ConnectionUpdateDataIn.CAction.DENY: {
-						Connection connection = await _connectionService.GetByInitiatorAndReceiver(otherUser.Id, currentUser.Id);
+						Connection connection = await connectionService.GetByInitiatorAndReceiver(otherUser.Id, currentUser.Id);
 						if (connection == null) {
 							return BadRequest();
 						}
-						_connectionService.Remove(connection.Id);
+						connectionService.Remove(connection.Id);
 					}
 					break;
 				case ConnectionUpdateDataIn.CAction.BLOCK: {
-						Connection connection = await _connectionService.GetByUsers(otherUser.Id, currentUser.Id);
+						Connection connection = await connectionService.GetByUsers(otherUser.Id, currentUser.Id);
 						bool wasFriend = false;
 						if (connection != null) {
 							if (connection.Type == ConnectionType.FRIENDS) {
 								wasFriend = true;
 							}
-							_connectionService.Remove(connection.Id);
+							connectionService.Remove(connection.Id);
 						}
 						UserBlock userBlock = new UserBlock() {
-							Blocker = new MongoDBRef("Users", currentUser.Id),
-							BlockedUser = new MongoDBRef("Users", otherUser.Id),
+							Blocker = new MongoDBRef(databaseSettings.UsersCollectionName, currentUser.Id),
+							BlockedUser = new MongoDBRef(databaseSettings.UsersCollectionName, otherUser.Id),
 							WasFriend = wasFriend
 						};
-						_userBlockService.Create(userBlock);
+						userBlockService.Create(userBlock);
 					}
 					break;
 				case ConnectionUpdateDataIn.CAction.UNBLOCK: {
-						UserBlock userBlock = await _userBlockService.GetByUsers(currentUser.Id, otherUser.Id);
+						UserBlock userBlock = await userBlockService.GetByUsers(currentUser.Id, otherUser.Id);
 						if (userBlock == null) {
 							return BadRequest();
 						}
 						if (userBlock.WasFriend) {
 							Connection connection = new Connection() {
-								User1 = new MongoDBRef("Users", currentUser.Id),
-								User2 = new MongoDBRef("Users", otherUser.Id),
+								User1 = new MongoDBRef(databaseSettings.UsersCollectionName, currentUser.Id),
+								User2 = new MongoDBRef(databaseSettings.UsersCollectionName, otherUser.Id),
 								Type = ConnectionType.FRIENDS
 							};
-							_connectionService.Create(connection);
+							connectionService.Create(connection);
 						}
-						_userBlockService.Remove(userBlock.Id);
+						userBlockService.Remove(userBlock.Id);
 					}
 					break;
 			}
