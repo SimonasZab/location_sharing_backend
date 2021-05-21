@@ -6,8 +6,10 @@ using System.Threading.Tasks;
 using APIUtils;
 using location_sharing_backend.Models;
 
-namespace location_sharing_backend.Backends {
-	public class UserBackend {
+namespace location_sharing_backend.Backends
+{
+	public class UserBackend
+	{
 		/*public static string GetUserIdFromClaims(ClaimsPrincipal principal) {
 			Claim? userIdClaim = principal.Claims.FirstOrDefault(x => x.Type == "UserId");
 			if (userIdClaim == null) {

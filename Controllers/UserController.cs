@@ -1,6 +1,5 @@
 ﻿using APIUtils;
 using location_sharing_backend.Backends;
-using location_sharing_backend.Models;
 using location_sharing_backend.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.JsonPatch;
@@ -14,14 +13,33 @@ using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
 
-namespace location_sharing_backend.Controllers {
+namespace location_sharing_backend.Controllers
+{
 	[ApiController]
 	[Authorize]
 	[Route(Settings.URL_PREFIX + "[controller]")]
-	public class UserController : ControllerBase {
-		private readonly UserService _userService;
-		public UserController(UserService userService) {
-			_userService = userService;
+	public class UserController : ControllerBase
+	{
+		private readonly UserService userService;
+		public UserController(UserService _userService)
+		{
+			userService = _userService;
 		}
+
+		/*[HttpPost("IsUsernameTaken")]
+		public async Task<ActionResult> CheckIfUsernameIsTaken(CheckUsernameIn dataIn) {
+			if (await userService.UserExists(dataIn.Username, registartionData.Email)) {
+				return BadRequest();
+			}
+			User user = new User() {
+				Username = registartionData.Username,
+				Password = Common.hashText(registartionData.Password, secrets.SALT),
+				Email = registartionData.Email,
+				ProfilePhotoURL = registartionData.ProfilePhotoURL
+			};
+			userService.Create(user);
+
+			return Ok();
+		}*/
 	}
 }

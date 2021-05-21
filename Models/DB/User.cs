@@ -6,8 +6,10 @@ using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace location_sharing_backend.Models {
-	public class User : Entity {
+namespace location_sharing_backend.Models.DB
+{
+	public class User : Entity
+	{
 		public string Username { get; set; }
 		public string Password { get; set; }
 		public string Email { get; set; }

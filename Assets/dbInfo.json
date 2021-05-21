@@ -1,0 +1,11 @@
+{
+	"DatabaseName": "LocationSharingDB",
+	"Collections": {
+		"Users": "Users",
+		"Connections": "Connections",
+		"UserBlocks": "UserBlocks",
+		"Locations": "Locations",
+		"UserShares": "UserShares",
+		"UserVerifications": "UserVerifications"
+	}
+}
