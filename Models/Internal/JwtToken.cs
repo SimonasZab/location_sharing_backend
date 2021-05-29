@@ -9,6 +9,7 @@ namespace Api.Models.Internal
     public class JwtToken
     {
         public string Value { get; set; }
-        public DateTime? ExpirationDate { get; set; }
-    }
+        public DateTime ExpirationDate { get; set; }
+		public AuthClaims AuthClaims { get; set; }
+	}
 }

@@ -42,23 +42,21 @@ namespace Api.Backends
 
 		public static RaTokens GenerateRaTokens(User user, bool persist)
 		{
-			var guid = Guid.NewGuid().ToString();
-
-			ClaimsIdentity claimsIdentity = AuthClaims.ToClaimsIdentity(user, guid, persist);
+			AuthClaims authClaims = new AuthClaims(user.Id, persist);
 
 			DateTime accessTokenExpirationDate = AccessTokenExpirationFromNow();
 			DateTime refreshTokenExpirationDate = RefreshTokenExpirationFromNow();
 
-			JwtToken AccessToken = GenerateJwtToken(claimsIdentity, accessTokenExpirationDate, persist);
-			JwtToken RefreshToken = GenerateJwtToken(claimsIdentity, refreshTokenExpirationDate, persist);
+			JwtToken AccessToken = GenerateJwtToken(authClaims, accessTokenExpirationDate);
+			JwtToken RefreshToken = GenerateJwtToken(authClaims, refreshTokenExpirationDate);
 			return new RaTokens(AccessToken, RefreshToken);
 		}
 
-		private static JwtToken GenerateJwtToken(ClaimsIdentity claimsIdentity, DateTime expiration, bool persist)
+		private static JwtToken GenerateJwtToken(AuthClaims authClaims, DateTime expiration)
 		{
 			var tokenDescriptor = new SecurityTokenDescriptor
 			{
-				Subject = claimsIdentity,
+				Subject = authClaims.ToClaimsIdentity(),
 				Expires = expiration,
 				SigningCredentials = SigningCredentials
 			};
@@ -67,7 +65,8 @@ namespace Api.Backends
 			return new JwtToken
 			{
 				Value = JwtTokenHandler.WriteToken(token),
-				ExpirationDate = persist ? expiration: null
+				ExpirationDate = expiration,
+				AuthClaims = authClaims
 			};
 		}
 
@@ -107,7 +106,7 @@ namespace Api.Backends
 			}
 
 			DateTime accessTokenExpirationDate = AccessTokenExpirationFromNow();
-			return GenerateJwtToken(claims.ToClaimsIdentity(), accessTokenExpirationDate, claims.Persist);
+			return GenerateJwtToken(claims, accessTokenExpirationDate);
 		}
 
 		public static string HashPassword(string text, byte[] salt)
@@ -138,7 +137,7 @@ namespace Api.Backends
 				jwtToken = new JwtToken();
 			}
 			CookieOptions cookieOptions = new CookieOptions();
-			cookieOptions.Expires = jwtToken.ExpirationDate;
+			cookieOptions.Expires = jwtToken.AuthClaims.Persist ? jwtToken.ExpirationDate : null;
 			//cookieOptions.Expires = DateTime.UtcNow.AddDays(15);
 
 			Cookie cookie = new Cookie

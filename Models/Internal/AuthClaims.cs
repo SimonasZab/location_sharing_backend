@@ -12,6 +12,15 @@ namespace Api.Models.Internal
 		public string Jti { get; set; }
 		public bool Persist { get; set; }
 
+		public AuthClaims() {}
+
+		public AuthClaims(string userId, bool persist)
+		{
+			UserId = userId;
+			Jti = Guid.NewGuid().ToString();
+			Persist = persist;
+		}
+
 		public static AuthClaims ParseClaimsPrincipal(ClaimsPrincipal claimsPrincipal)
 		{
 			AuthClaims authClaims = new AuthClaims()
@@ -45,14 +54,14 @@ namespace Api.Models.Internal
 			return claim.Value;
 		}
 
-		public static ClaimsIdentity ToClaimsIdentity(User user, string jti, bool persist)
+		/*public static ClaimsIdentity ToClaimsIdentity(User user, string jti, bool persist)
 		{
 			return new ClaimsIdentity(new List<Claim> {
 				new Claim(nameof(UserId), user.Id),
 				new Claim(nameof(Jti), jti),
 				new Claim(nameof(Persist), persist.ToString()),
 			});
-		}
+		}*/
 
 		public ClaimsIdentity ToClaimsIdentity()
 		{
