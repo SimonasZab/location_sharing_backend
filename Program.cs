@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Hosting;
 
-namespace location_sharing_backend
+namespace Api
 {
 	public class Program
 	{

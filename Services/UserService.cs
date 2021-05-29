@@ -1,13 +1,12 @@
-﻿using APIUtils;
-using location_sharing_backend.Backends;
-using location_sharing_backend.Models.DB;
+﻿using Api.Backends;
+using Api.Models.DB;
 using MongoDB.Driver;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace location_sharing_backend.Services
+namespace Api.Services
 {
 	public class UserService : ServiceBase<User>
 	{

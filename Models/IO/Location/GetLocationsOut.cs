@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace location_sharing_backend.Models.IO.Location
+namespace Api.Models.IO.Location
 {
 	public class GetLocationsOut
 	{

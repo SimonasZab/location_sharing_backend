@@ -1,12 +1,11 @@
-﻿using location_sharing_backend.Models.Settings;
+﻿using Api.Models.Settings;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Threading.Tasks;
 
-namespace location_sharing_backend
+namespace Api
 {
 	public class Assets
 	{
@@ -14,11 +13,13 @@ namespace location_sharing_backend
 		private const string HTML_PAGES_DIR = "HtmlPages";
 		private const string SECRET_DIR = "Secrets";
 
+		public static readonly Config Config = LoadJson<Config>(ASSETS_DIR, "config.json");
+		public static readonly ErrorCodes ErrorCodes = LoadJson<ErrorCodes>(ASSETS_DIR, "errorCodes.json");
 		public static readonly string UserValidationSuccessPage = LoadTextFile(ASSETS_DIR, HTML_PAGES_DIR, "UserValidationSuccessPage.html");
 		public static readonly string UserValidationErrorPage = LoadTextFile(ASSETS_DIR, HTML_PAGES_DIR, "UserValidationErrorPage.html");
 		public static readonly DbInfo DbInfo = LoadJson<DbInfo>(ASSETS_DIR, "dbInfo.json");
 		public static readonly Secrets Secrets = LoadJson<Secrets>(ASSETS_DIR, SECRET_DIR, "secrets.json");
-		public static readonly OtherSettings OtherSettings = LoadJson<OtherSettings>(ASSETS_DIR, "otherSettings.json");
+		public static readonly Misc Misc = LoadJson<Misc>(ASSETS_DIR, "misc.json");
 		public static readonly string RegistartionEmailTemplate = LoadTextFile(ASSETS_DIR, HTML_PAGES_DIR, "RegistrationEmailTemplate.html");
 
 		static Assets() { }

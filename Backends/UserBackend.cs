@@ -3,10 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
-using APIUtils;
-using location_sharing_backend.Models;
+using Api.Models;
 
-namespace location_sharing_backend.Backends
+namespace Api.Backends
 {
 	public class UserBackend
 	{

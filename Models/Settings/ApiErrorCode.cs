@@ -5,9 +5,8 @@ using System.Threading.Tasks;
 
 namespace Api.Models.Settings
 {
-	public class DbInfo
+	public class ApiErrorCode
 	{
-		public string DatabaseName { get; set; }
-		public DbCollections Collections { get; set; }
+		public int Code { get; set; }
 	}
 }

@@ -1,31 +1,23 @@
-﻿using location_sharing_backend.Models.DB;
+﻿using Api.Models.DB;
+using Api.Models.Internal;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 
-namespace location_sharing_backend.Models.IO.Auth
+namespace Api.Models.IO.Auth
 {
 	public class LoginOut
 	{
-		public class UserData
-		{
-			public string Id { get; set; }
-			public string Username { get; set; }
-			public string? ProfilePhotoURL { get; set; }
-		}
-		public UserData User { get; set; }
-		public DateTime AccessTokenExpires { get; set; }
+		public LoginOutUserData User { get; set; }
+		public DateTime? AccessTokenExpires { get; set; }
 
-		public LoginOut(User user, DateTime accessTokenExpires)
+		public LoginOut(User user, RaTokens raTokens)
 		{
-			User = new UserData()
+			User = new LoginOutUserData
 			{
 				Id = user.Id,
 				Username = user.Username,
 				ProfilePhotoURL = user.ProfilePhotoURL,
 			};
-			AccessTokenExpires = accessTokenExpires;
+			AccessTokenExpires = raTokens.AccessTokenData.ExpirationDate;
 		}
 	}
 }

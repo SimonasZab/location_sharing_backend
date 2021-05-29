@@ -1,0 +1,18 @@
+{
+	"TooManyLoginAttempts": {
+		"Code": 1
+	},
+	"IncorrectLoginCredentials": {
+		"Code": 2
+	},
+	"UnverifiedUser": {
+		"Code": 3
+	},
+
+	"UserWithUsernameAlreadyExists": {
+		"Code": 4
+	},
+	"UserWithEmailAlreadyExists": {
+		"Code": 5
+	}
+}

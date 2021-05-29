@@ -4,9 +4,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace location_sharing_backend.Models.Settings
+namespace Api.Models.Settings
 {
-    public class OtherSettings
+    public class Misc
     {
 		public string RegistrationEmailTitle { get; set; }
     }

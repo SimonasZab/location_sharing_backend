@@ -1,13 +1,11 @@
-﻿using APIUtils;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
-using System.Threading.Tasks;
 
-namespace location_sharing_backend.Models.IO.Auth
+namespace Api.Models.IO.Auth
 {
-	public class LoginInBase
+	public class LoginInBase : IValidatableObject
 	{
 		[Required]
 		[StringLength(30, MinimumLength = 5)]
@@ -16,42 +14,22 @@ namespace location_sharing_backend.Models.IO.Auth
 		[StringLength(30, MinimumLength = 8)]
 		public string Password { get; set; }
 
-		public void Validate()
+		public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
 		{
-			ValidateUsername(Username);
-			ValidatePassword(Password);
-		}
+			if (Username.Any(x => char.IsWhiteSpace(x)))
+			{
+				yield return new ValidationResult(null, new[] { nameof(Username) });
+			}
 
-		public static void ValidateUsername(string text)
-		{
-			if (text.Length < 5)
+			if (!Password.Any(x => char.IsLower(x))
+				|| !Password.Any(x => char.IsUpper(x))
+				|| !Password.Any(x => char.IsDigit(x))
+				|| Password.Any(x => char.IsWhiteSpace(x))
+			)
 			{
-				throw new APIException(APIErrorCode.RECEIVED_DATA_IS_INVALID);
+				yield return new ValidationResult(null, new[] { nameof(Password) });
 			}
-			if (text.Any(x => char.IsWhiteSpace(x)))
-			{
-				throw new APIException(APIErrorCode.RECEIVED_DATA_IS_INVALID);
-			}
-		}
-
-		public static void ValidatePassword(string text)
-		{
-			if (text.Length < 8)
-			{
-				throw new APIException(APIErrorCode.RECEIVED_DATA_IS_INVALID);
-			}
-			if (!text.Any(x => char.IsLower(x)))
-			{
-				throw new APIException(APIErrorCode.RECEIVED_DATA_IS_INVALID);
-			}
-			if (!text.Any(x => char.IsUpper(x)))
-			{
-				throw new APIException(APIErrorCode.RECEIVED_DATA_IS_INVALID);
-			}
-			if (!text.Any(x => char.IsDigit(x)))
-			{
-				throw new APIException(APIErrorCode.RECEIVED_DATA_IS_INVALID);
-			}
+			yield break;
 		}
 	}
 }

@@ -1,0 +1,5 @@
+{
+	"PathBase": "",
+	"AccessTokenValidityInMinutes": 1,
+	"RefreshTokenValidityInDays": 60
+}

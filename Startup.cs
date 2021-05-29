@@ -1,29 +1,20 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.HttpsPolicy;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
-using APIUtils;
-using Microsoft.AspNetCore.Mvc.Formatters;
-using Microsoft.Extensions.Options;
-using location_sharing_backend.Services;
+using Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Api.Backends;
 
-namespace location_sharing_backend
+namespace Api
 {
 	public class Startup
 	{
-		//readonly string MyAllowSpecificOrigins = "_myAllowSpecificOrigins";
-
 		public Startup(IConfiguration configuration)
 		{
 			Configuration = configuration;
@@ -33,14 +24,6 @@ namespace location_sharing_backend
 
 		public void ConfigureServices(IServiceCollection services)
 		{
-			/*services.AddCors(options =>
-			{
-				options.AddPolicy(name: MyAllowSpecificOrigins,
-					builder => {
-						builder.WithOrigins("https://localhost:8080", "http://localhost:8080").AllowCredentials().AllowAnyHeader();
-					});
-			});*/
-
 			services.AddAuthentication(
 				options =>
 				{
@@ -50,23 +33,19 @@ namespace location_sharing_backend
 				}
 			).AddJwtBearer(jwt =>
 			{
-				var key = Assets.Secrets.JWTSecret;
-
 				jwt.SaveToken = true;
-				jwt.TokenValidationParameters = new TokenValidationParameters
-				{
-					ValidateIssuerSigningKey = true,
-					IssuerSigningKey = new SymmetricSecurityKey(key),
-					ValidateIssuer = false,
-					ValidateAudience = false,
-					RequireExpirationTime = false,
-					ValidateLifetime = true
-				};
+				jwt.TokenValidationParameters = AuthBackend.TokenValidationParameters;
 				jwt.Events = new JwtBearerEvents
 				{
 					OnMessageReceived = context =>
 					{
-						context.Token = context.Request.Cookies[Assets.Secrets.AccessTokenCookieName];
+						Endpoint? endpoint = context.HttpContext.GetEndpoint();
+						if (endpoint == null) {
+							return Task.CompletedTask;
+						}
+						if (endpoint.Metadata.GetMetadata<AuthorizeAttribute>() != null) {
+							context.Token = context.Request.Cookies[Assets.Secrets.AccessTokenCookieName];
+						}
 						return Task.CompletedTask;
 					}
 				};
@@ -78,31 +57,21 @@ namespace location_sharing_backend
 			services.AddSingleton<LocationService>();
 			services.AddSingleton<UserShareService>();
 			services.AddSingleton<UserVerificationService>();
-			services.AddSingleton<MailSender>();
 
 			services.AddControllers(
 				options =>
 				{
 					options.Filters.Add(new APIExceptionFilter());
-					options.InputFormatters.Insert(0, GetJsonPatchInputFormatter());
 				}
-			).AddNewtonsoftJson();
-
-			/*services.AddSwaggerGen(c => {
-				c.SwaggerDoc("v1", new OpenApiInfo { Title = "location_sharing_backend", Version = "v1" });
-			});*/
+			);
 		}
 
 		public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
 		{
-			if (env.IsDevelopment())
+			/*if (env.IsDevelopment())
 			{
-				//app.UseDeveloperExceptionPage();
-				//app.UseSwagger();
-				//app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "location_sharing_backend v1"));
-			}
-
-			//app.UseHttpsRedirection();
+				app.UseDeveloperExceptionPage();
+			}*/
 
 			var cookiePolicyOptions = new CookiePolicyOptions
 			{
@@ -112,9 +81,8 @@ namespace location_sharing_backend
 			};
 			app.UseCookiePolicy(cookiePolicyOptions);
 
+			app.UsePathBase(new PathString(Assets.Config.PathBase));
 			app.UseRouting();
-
-			//app.UseCors(MyAllowSpecificOrigins);
 
 			app.UseAuthentication();
 			app.UseAuthorization();
@@ -123,22 +91,6 @@ namespace location_sharing_backend
 			{
 				endpoints.MapControllers();
 			});
-		}
-
-		private static NewtonsoftJsonPatchInputFormatter GetJsonPatchInputFormatter()
-		{
-			var builder = new ServiceCollection()
-				.AddLogging()
-				.AddMvc()
-				.AddNewtonsoftJson()
-				.Services.BuildServiceProvider();
-
-			return builder
-				.GetRequiredService<IOptions<MvcOptions>>()
-				.Value
-				.InputFormatters
-				.OfType<NewtonsoftJsonPatchInputFormatter>()
-				.First();
 		}
 	}
 }

@@ -1,18 +1,20 @@
-﻿using location_sharing_backend.Backends;
-using location_sharing_backend.Models.DB;
-using location_sharing_backend.Services;
+﻿using Api.Backends;
+using Api.Models.DB;
+using Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using location_sharing_backend.Models.IO.Location;
+using Api.Models.IO.Location;
+using Api.Models.Internal;
+using Microsoft.AspNetCore.Authorization;
 
-namespace location_sharing_backend.Controllers
+namespace Api.Controllers
 {
 	[ApiController]
-	[Route(Settings.URL_PREFIX + "[controller]")]
+	[Route("[controller]")]
 	public class LocationController : ControllerBase
 	{
 		private readonly LocationService locationService;
@@ -24,20 +26,21 @@ namespace location_sharing_backend.Controllers
 			userShareService = _userShareService;
 		}
 
+		[Authorize]
 		[HttpGet]
 		public async Task<ActionResult<GetLocationsOut>> GetLocationsSharedWithCurrentUser()
 		{
 			AuthClaims authClaims = AuthClaims.ParseClaimsPrincipal(User);
 			List<UserShare> userShares = await userShareService.GetUserLocationsSharedWithUser(authClaims.UserId);
 			List<string> locationIds = new List<string>();
-			foreach (UserShare item in userShares)
+			foreach (var item in userShares)
 			{
 				locationIds.Add(item.SharedObj.Id.AsString);
 			}
 			List<Location> locations = await locationService.GetByIds(locationIds);
 
 			GetLocationsOut getLocationsOut = new GetLocationsOut();
-			foreach (Location item in locations)
+			foreach (var item in locations)
 			{
 				getLocationsOut.UserLocations.Add(
 					new GetLocationsOut.UserLocation()
@@ -52,6 +55,7 @@ namespace location_sharing_backend.Controllers
 			return Ok(getLocationsOut);
 		}
 
+		[Authorize]
 		[HttpPost]
 		public IActionResult UpdateCurrentUserLocation([FromBody] CurrentUserLocationIn currentUserLocationIn)
 		{

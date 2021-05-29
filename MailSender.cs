@@ -1,46 +1,46 @@
-﻿using location_sharing_backend.Models.Settings;
+﻿using MailKit.Net.Smtp;
+using MailKit.Security;
+using MimeKit;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Linq;
-using System.Net;
-using System.Net.Mail;
-using System.Text;
-using System.Threading.Tasks;
 
-namespace location_sharing_backend
+namespace Api
 {
 	public class MailSender
 	{
-		private SmtpClient smtpClient;
-
-		public MailSender()
+		public static bool SendLetter(string email, string subject, string body)
 		{
-			smtpClient = new SmtpClient("smtp.gmail.com", 587);
-			smtpClient.EnableSsl = true;
-			smtpClient.Credentials = new NetworkCredential(Assets.Secrets.SmtpAuth.Email, Assets.Secrets.SmtpAuth.Password);
-		}
+			var message = new MimeMessage();
+			var bodyBuilder = new BodyBuilder();
 
-		public bool SendLetter(string email, string subject, string body)
-		{
-			MailAddress maFrom = new MailAddress(Assets.Secrets.SmtpAuth.Email, Assets.Secrets.SmtpAuth.Email, Encoding.UTF8);
-			MailAddress maTo = new MailAddress(email, email, Encoding.UTF8);
-			MailMessage mmsg = new MailMessage(maFrom, maTo);
-			mmsg.SubjectEncoding = Encoding.UTF8;
-			mmsg.Subject = subject;
-			mmsg.IsBodyHtml = true;
-			mmsg.BodyEncoding = Encoding.UTF8;
-			mmsg.Body = body;
+			message.From.Add(new MailboxAddress(Assets.Secrets.SmtpAuth.Email, Assets.Secrets.SmtpAuth.Email));
+			message.To.Add(new MailboxAddress(email, email));
+			//message.ReplyTo.Add(new MailboxAddress("reply_name", "reply_email@example.com"));
 
-			try
+			message.Subject = subject;
+			bodyBuilder.HtmlBody = body;
+			message.Body = bodyBuilder.ToMessageBody();
+
+			bool successful = true;
+			using (var smtpClient = new SmtpClient())
 			{
-				smtpClient.Send(mmsg);
-				return true;
+				smtpClient.ServerCertificateValidationCallback = (s, c, h, e) => true;
+				smtpClient.Connect("smtp.gmail.com", 465, SecureSocketOptions.SslOnConnect);
+				smtpClient.Authenticate(Assets.Secrets.SmtpAuth.Email, Assets.Secrets.SmtpAuth.Password);
+
+				try
+				{
+					smtpClient.Send(message);
+				}
+				catch
+				{
+					successful = false;
+				}
+
+				smtpClient.Disconnect(true);
 			}
-			catch
-			{
-				return false;
-			}
+			return successful;
 		}
 	}
 }

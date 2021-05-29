@@ -1,4 +1,4 @@
-﻿using location_sharing_backend.Models.DB;
+﻿using Api.Models.DB;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
@@ -6,9 +6,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using location_sharing_backend.Models.IO.Connection;
+using Api.Models.IO.Connection;
 
-namespace location_sharing_backend.Services
+namespace Api.Services
 {
 	public class UserBlockService : ServiceBase<UserBlock>
 	{

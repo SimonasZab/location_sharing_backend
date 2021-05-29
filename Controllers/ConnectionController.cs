@@ -1,18 +1,17 @@
-﻿using location_sharing_backend.Backends;
-using location_sharing_backend.Models.DB;
-using location_sharing_backend.Services;
+﻿using Api.Models.DB;
+using Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
-using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
-using location_sharing_backend.Models.IO.Connection;
+using Api.Models.IO.Connection;
+using Microsoft.AspNetCore.Authorization;
+using Api.Models.Internal;
 
-namespace location_sharing_backend.Controllers
+namespace Api.Controllers
 {
 	[ApiController]
-	[Route(Settings.URL_PREFIX + "[controller]")]
+	[Route("[controller]")]
 	public class ConnectionController : ControllerBase
 	{
 		private readonly ConnectionService connectionService;
@@ -26,18 +25,18 @@ namespace location_sharing_backend.Controllers
 			userService = _userService;
 		}
 
+		[Authorize]
 		[HttpGet]
 		public async Task<ActionResult<GetListOut>> GetCurrentUserConnectionsList([FromQuery] GetListIn getListIn)
 		{
 			AuthClaims authClaims = AuthClaims.ParseClaimsPrincipal(User);
-			GetListOut getListOut = new GetListOut();
 			List<string> userIds = new List<string>();
 			if (getListIn.Type == GetListTypeFilter.REQUESTS_SENT ||
 				getListIn.Type == GetListTypeFilter.REQUESTS_RECEIVED ||
 				getListIn.Type == GetListTypeFilter.FRIENDS)
 			{
 				List<Connection> connections = await connectionService.GetList(authClaims.UserId, getListIn.PageOffset, getListIn.PageSize, getListIn.Type);
-				foreach (Connection item in connections)
+				foreach (var item in connections)
 				{
 					if (item.User1.Id.AsString != authClaims.UserId)
 					{
@@ -52,13 +51,14 @@ namespace location_sharing_backend.Controllers
 			else if (getListIn.Type == GetListTypeFilter.BLOCKS)
 			{
 				List<UserBlock> userBlocks = await userBlockService.GetList(authClaims.UserId, getListIn.PageOffset, getListIn.PageSize, getListIn.Type);
-				foreach (UserBlock item in userBlocks)
+				foreach (var item in userBlocks)
 				{
 					userIds.Add(item.BlockedUser.Id.AsString);
 				}
 			}
+			GetListOut getListOut = new GetListOut();
 			List<User> users = await userService.GetByIds(userIds);
-			foreach (User item in users)
+			foreach (var item in users)
 			{
 				getListOut.Users.Add(new GetListOut.UserData()
 				{
@@ -70,6 +70,7 @@ namespace location_sharing_backend.Controllers
 			return Ok(getListOut);
 		}
 
+		[Authorize]
 		[HttpPost("request")]
 		public async Task<IActionResult> RequestConnection(RequestConnectionIn friendRequestData)
 		{
@@ -118,6 +119,7 @@ namespace location_sharing_backend.Controllers
 			return Ok();
 		}
 
+		[Authorize]
 		[HttpPost("update")]
 		public async Task<IActionResult> Update(ConnectionUpdateDataIn connectionUpdateDataIn)
 		{

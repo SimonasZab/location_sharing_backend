@@ -1,71 +1,59 @@
-﻿using System;
-using System.Threading.Tasks;
-using location_sharing_backend.Models.DB;
+﻿using System.Threading.Tasks;
+using Api.Models.DB;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using APIUtils;
-using location_sharing_backend.Backends;
-using location_sharing_backend.Services;
+using Api.Backends;
+using Api.Services;
 using MongoDB.Driver;
-using location_sharing_backend.Models.IO.Auth;
-using System.Text;
+using Api.Models.IO.Auth;
+using Api.Models.Internal;
 
-namespace location_sharing_backend.Controllers
+namespace Api.Controllers
 {
 	[ApiController]
-	[Route(Settings.URL_PREFIX + "[controller]")]
+	[Route("[controller]")]
 	public class AuthController : ControllerBase
 	{
 		private readonly UserService userService;
 		private readonly UserVerificationService userVerificationService;
-		private readonly MailSender mailSender;
 
-		public AuthController(UserService _userService, UserVerificationService _userVerificationService, MailSender _mailSender)
+		public AuthController(UserService _userService, UserVerificationService _userVerificationService)
 		{
 			userService = _userService;
 			userVerificationService = _userVerificationService;
-			mailSender = _mailSender;
 		}
 
 		[HttpPost("register")]
 		public async Task<ActionResult> Register([FromBody] RegisterIn registartionData)
 		{
-			registartionData.Validate();
 			if (await userService.CheckIfUssernameExists(registartionData.Username))
 			{
-				throw new APIException(APIErrorCode.USERNAME_TAKEN);
+				throw new ApiException(Assets.ErrorCodes.UserWithUsernameAlreadyExists);
 			}
+
 			if (await userService.CheckIfEmailExists(registartionData.Email))
 			{
-				throw new APIException(APIErrorCode.EMAIL_TAKEN);
+				throw new ApiException(Assets.ErrorCodes.UserWithEmailAlreadyExists);
 			}
 
-			string registrationToken = Common.GenerateAlphaNumericString(32);
-
-			StringBuilder sb = new StringBuilder(Assets.RegistartionEmailTemplate);
-			sb.Replace("{username}", registartionData.Username);
-			sb.Replace("{server_url}", Assets.Secrets.ServerUrl);
-			sb.Replace("{token}", registrationToken);
-			if (!mailSender.SendLetter(registartionData.Email, Assets.OtherSettings.RegistrationEmailTitle, sb.ToString()))
-			{
-				return BadRequest();
-			}
-
-			User user = new User()
+			User user = new User
 			{
 				Username = registartionData.Username,
-				Password = Common.hashText(registartionData.Password, Assets.Secrets.Salt),
+				Password = AuthBackend.HashPassword(registartionData.Password, Assets.Secrets.Salt),
 				Email = registartionData.Email,
 			};
-			userService.Create(user);
 
-			UserVerification userVerification = new UserVerification()
+			string verificationToken = Common.GenerateAlphaNumericString(32);
+
+			AuthBackend.SendUserConfirmationLetter(user, verificationToken);
+
+			userService.Create(user);
+			UserVerification userVerification = new UserVerification
 			{
-				Token = registrationToken,
+				Token = verificationToken,
 				User = new MongoDBRef(Assets.DbInfo.Collections.Users, user.Id),
 			};
 			userVerificationService.Create(userVerification);
-
 			return Ok();
 		}
 
@@ -84,65 +72,59 @@ namespace location_sharing_backend.Controllers
 		[HttpPost("login")]
 		public async Task<ActionResult> Login([FromBody] LoginIn loginData)
 		{
-			loginData.Validate();
-			if (User.Identity != null && User.Identity.IsAuthenticated)
-			{
-				throw new APIException(APIErrorCode.ALREADY_LOGGED_IN);
-			}
-
 			User user = await userService.GetByUsername(loginData.Username);
 			if (user == null)
 			{
-				return BadRequest();
+				throw new ApiException(Assets.ErrorCodes.IncorrectLoginCredentials);
+			}
+
+			string hashedPassword = AuthBackend.HashPassword(loginData.Password, Assets.Secrets.Salt);
+			if (user.Password != hashedPassword)
+			{
+				throw new ApiException(Assets.ErrorCodes.IncorrectLoginCredentials);
 			}
 
 			UserVerification userVerification = await userVerificationService.FindByUser(user);
 			if (userVerification != null)
 			{
-				return BadRequest();
+				AuthBackend.SendUserConfirmationLetter(user, userVerification.Token);
+				throw new ApiException(Assets.ErrorCodes.UnverifiedUser);
 			}
 
-			string hashedPassword = Common.hashText(loginData.Password, Assets.Secrets.Salt);
-			if (user.Password != hashedPassword)
-			{
-				return BadRequest();
-			}
+			RaTokens raTokens = AuthBackend.GenerateRaTokens(user, loginData.Persist);
 
-			LoginOut loginOut = new LoginOut(user, AuthBackend.GenerateJwtTokens(user, loginData.Persist, Response));
+			Cookie assessTokenCookie = AuthBackend.CreateAccessTokenCookie(raTokens.AccessTokenData);
+			assessTokenCookie.AppendToResponse(Response);
 
-			CookieOptions rtOptions = new CookieOptions();
+			Cookie refreshTokenCookie = AuthBackend.CreateRefreshTokenCookie(raTokens.RefreshTokenData);
+			refreshTokenCookie.AppendToResponse(Response);
 
+			LoginOut loginOut = new LoginOut(user, raTokens);
 			return Ok(loginOut);
 		}
 
 		[HttpPost("logout")]
 		public IActionResult Logout()
 		{
-			Response.Cookies.Delete(Assets.Secrets.AccessTokenCookieName);
-			CookieOptions rtOptions = new CookieOptions();
-			rtOptions.Path = "/api/auth";
-			Response.Cookies.Delete(Assets.Secrets.RefreshTokenCookieName, rtOptions);
+			AuthBackend.CreateAccessTokenCookie().DeleteFromResponse(Response);
+			AuthBackend.CreateRefreshTokenCookie().DeleteFromResponse(Response);
 			return Ok();
 		}
 
 		[HttpPost("refresh")]
 		public async Task<IActionResult> RefreshToken()
 		{
-			if (User.Identity != null && User.Identity.IsAuthenticated)
-			{
-				throw new APIException(APIErrorCode.ALREADY_LOGGED_IN);
-			}
 			HttpContext.Request.Cookies.TryGetValue(Assets.Secrets.RefreshTokenCookieName, out string? refreshToken);
 			if (refreshToken == null)
 			{
-				return BadRequest();
+				throw new ApiException();
 			}
-			DateTime? accesTokenExpirationDate = await AuthBackend.RefreshAccessToken(refreshToken, userService, Response);
-			if (accesTokenExpirationDate == null)
-			{
-				return BadRequest();
-			}
-			return Ok(new RefreshOut(accesTokenExpirationDate.Value));
+
+			JwtToken accessToken = await AuthBackend.GenerateNewAccessToken(refreshToken, userService);
+
+			Cookie assessTokenCookie = AuthBackend.CreateAccessTokenCookie(accessToken);
+			assessTokenCookie.AppendToResponse(Response);
+			return Ok(new RefreshOut(accessToken.ExpirationDate));
 		}
 	}
 }

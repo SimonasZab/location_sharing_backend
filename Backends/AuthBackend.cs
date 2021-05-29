@@ -1,134 +1,169 @@
-﻿using location_sharing_backend.Models.DB;
-using location_sharing_backend.Models.Settings;
-using location_sharing_backend.Services;
+﻿using Api.Models.DB;
+using Api.Services;
+using Flurl;
+using Microsoft.AspNetCore.Cryptography.KeyDerivation;
 using Microsoft.AspNetCore.Http;
 using Microsoft.IdentityModel.Tokens;
 using System;
-using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
-using System.Linq;
 using System.Security.Claims;
+using System.Text;
 using System.Threading.Tasks;
+using Api.Models.Internal;
 
-namespace location_sharing_backend.Backends
+namespace Api.Backends
 {
 	public class AuthBackend
 	{
-
-		public static DateTime GenerateJwtTokens(User user, bool persist, HttpResponse httpResponse)
+		private static readonly JwtSecurityTokenHandler JwtTokenHandler = new JwtSecurityTokenHandler();
+		private static readonly SigningCredentials SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(Assets.Secrets.JWTSecret), SecurityAlgorithms.HmacSha256Signature);
+		public static TokenValidationParameters TokenValidationParameters = new TokenValidationParameters
 		{
-			var jwtTokenHandler = new JwtSecurityTokenHandler();
+			
+			ValidateIssuerSigningKey = true,
+			IssuerSigningKey = new SymmetricSecurityKey(Assets.Secrets.JWTSecret),
+			ValidateIssuer = false,
+			ValidateAudience = false,
+			RequireExpirationTime = true,
+			LifetimeValidator = LifetimeValidator,
+		};
 
-			var key = Assets.Secrets.JWTSecret;
+		public static void SendUserConfirmationLetter(User user, string token)
+		{
+			StringBuilder sb = new StringBuilder(Assets.RegistartionEmailTemplate);
+			sb.Replace("{username}", user.Username);
+			sb.Replace("{server_url}", Url.Combine(Assets.Secrets.ServerUrl, Assets.Config.PathBase));
+			sb.Replace("{token}", token);
+			if (!MailSender.SendLetter(user.Email, Assets.Misc.RegistrationEmailTitle, sb.ToString()))
+			{
+				throw new ApiException();
+			}
+		}
+
+		public static RaTokens GenerateRaTokens(User user, bool persist)
+		{
 			var guid = Guid.NewGuid().ToString();
-			var signingCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature);
-
-			DateTime accessTokenExpirationDate = DateTime.UtcNow.AddMinutes(15);
-			DateTime refreshTokenExpirationDate = DateTime.UtcNow.AddMonths(2);
 
 			ClaimsIdentity claimsIdentity = AuthClaims.ToClaimsIdentity(user, guid, persist);
 
-			string accessToken = GenerateJwtToken(jwtTokenHandler, claimsIdentity, DateTime.UtcNow.AddMinutes(15), signingCredentials);
-			string refreshToken = GenerateJwtToken(jwtTokenHandler, claimsIdentity, DateTime.UtcNow.AddMonths(2), signingCredentials);
+			DateTime accessTokenExpirationDate = AccessTokenExpirationFromNow();
+			DateTime refreshTokenExpirationDate = RefreshTokenExpirationFromNow();
 
-			CookieOptions atOptions = new CookieOptions();
-			if (persist)
-			{
-				atOptions.Expires = accessTokenExpirationDate;
-			}
-			httpResponse.Cookies.Append(Assets.Secrets.AccessTokenCookieName, accessToken, atOptions);
-
-			CookieOptions rtOptions = new CookieOptions();
-			if (persist)
-			{
-				rtOptions.Expires = refreshTokenExpirationDate;
-			}
-			rtOptions.Path = "/api/auth";
-			httpResponse.Cookies.Append(Assets.Secrets.RefreshTokenCookieName, refreshToken, rtOptions);
-
-			return accessTokenExpirationDate;
+			JwtToken AccessToken = GenerateJwtToken(claimsIdentity, accessTokenExpirationDate, persist);
+			JwtToken RefreshToken = GenerateJwtToken(claimsIdentity, refreshTokenExpirationDate, persist);
+			return new RaTokens(AccessToken, RefreshToken);
 		}
 
-		private static string GenerateJwtToken(JwtSecurityTokenHandler jwtTokenHandler, ClaimsIdentity claimsIdentity, DateTime expiration, SigningCredentials signingCredentials)
+		private static JwtToken GenerateJwtToken(ClaimsIdentity claimsIdentity, DateTime expiration, bool persist)
 		{
-			var refreshTokenDescriptor = new SecurityTokenDescriptor
+			var tokenDescriptor = new SecurityTokenDescriptor
 			{
 				Subject = claimsIdentity,
 				Expires = expiration,
-				SigningCredentials = signingCredentials
+				SigningCredentials = SigningCredentials
 			};
+			var token = JwtTokenHandler.CreateToken(tokenDescriptor);
 
-			var token = jwtTokenHandler.CreateToken(refreshTokenDescriptor);
-
-			return jwtTokenHandler.WriteToken(token);
+			return new JwtToken
+			{
+				Value = JwtTokenHandler.WriteToken(token),
+				ExpirationDate = persist ? expiration: null
+			};
 		}
 
-		public static async Task<DateTime?> RefreshAccessToken(string refreshToken, UserService userService, HttpResponse httpResponse)
-		{
-			var jwtTokenHandler = new JwtSecurityTokenHandler();
-
-			var tokenValidationParameters = new TokenValidationParameters
+		public static ClaimsPrincipal ValidateJwtToken(string token) {
+			try
 			{
-				ValidateIssuerSigningKey = true,
-				IssuerSigningKey = new SymmetricSecurityKey(Assets.Secrets.JWTSecret),
-				ValidateIssuer = false,
-				ValidateAudience = false,
-				ValidateLifetime = true,
-				RequireExpirationTime = false
-			};
-
-			var refreshTokenPrincipals = jwtTokenHandler.ValidateToken(refreshToken, tokenValidationParameters, out var validatedRefreshToken);
-
-			if (validatedRefreshToken is JwtSecurityToken jwtRefrehSecurityToken)
-			{
-				var result = jwtRefrehSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.InvariantCultureIgnoreCase);
-
-				if (result == false)
+				var claimsPrincipal = JwtTokenHandler.ValidateToken(token, TokenValidationParameters, out SecurityToken securityToken);
+				if (securityToken is JwtSecurityToken jwtRefrehSecurityToken)
 				{
-					return null;
+					if (!jwtRefrehSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.InvariantCultureIgnoreCase))
+					{
+						throw new Exception();
+					}
 				}
+				else
+				{
+					throw new Exception();
+				}
+				return claimsPrincipal;
 			}
-
-			var expiryClaim = refreshTokenPrincipals.Claims.FirstOrDefault(x => x.Type == JwtRegisteredClaimNames.Exp);
-			if (expiryClaim == null)
+			catch
 			{
-				return null;
+				throw new ApiException();
 			}
-			var utcExpiryDate = long.Parse(expiryClaim.Value);
+		}
 
-			var expDate = UnixTimeStampToDateTime(utcExpiryDate);
-			if (DateTime.UtcNow.CompareTo(expDate) >= 0)
-			{
-				return null;//dont give acces token if refresh token is expired
-			}
+		public static async Task<JwtToken> GenerateNewAccessToken(string refreshToken, UserService userService)
+		{
+			ClaimsPrincipal claimsPrincipal = ValidateJwtToken(refreshToken);
 
-			AuthClaims claims = AuthClaims.ParseClaimsPrincipal(refreshTokenPrincipals);
+			AuthClaims claims = AuthClaims.ParseClaimsPrincipal(claimsPrincipal);
 
 			User user = await userService.Get(claims.UserId);
 			if (user == null)
 			{
-				return null;
+				throw new ApiException();
 			}
 
-			var signingCredentials = new SigningCredentials(new SymmetricSecurityKey(Assets.Secrets.JWTSecret), SecurityAlgorithms.HmacSha256Signature);
-			DateTime AccessTokenExpirationDate = DateTime.UtcNow.AddMinutes(15);
-			string AccessToken = GenerateJwtToken(jwtTokenHandler, claims.ToClaimsIdentity(), AccessTokenExpirationDate, signingCredentials);
-
-			CookieOptions atOptions = new CookieOptions();
-			if (claims.Persist)
-			{
-				atOptions.Expires = AccessTokenExpirationDate;
-			}
-			httpResponse.Cookies.Append(Assets.Secrets.AccessTokenCookieName, AccessToken, atOptions);
-
-			return AccessTokenExpirationDate;
+			DateTime accessTokenExpirationDate = AccessTokenExpirationFromNow();
+			return GenerateJwtToken(claims.ToClaimsIdentity(), accessTokenExpirationDate, claims.Persist);
 		}
 
-		private static DateTime UnixTimeStampToDateTime(double unixTimeStamp)
+		public static string HashPassword(string text, byte[] salt)
 		{
-			System.DateTime dtDateTime = new DateTime(1970, 1, 1, 0, 0, 0, 0, System.DateTimeKind.Utc);
-			dtDateTime = dtDateTime.AddSeconds(unixTimeStamp).ToUniversalTime();
-			return dtDateTime;
+			string hashed = Convert.ToBase64String(KeyDerivation.Pbkdf2(
+				password: text,
+				salt: salt,
+				prf: KeyDerivationPrf.HMACSHA1,
+				iterationCount: 10000,
+				numBytesRequested: 256 / 8));
+			return hashed;
+		}
+
+		public static Cookie CreateRefreshTokenCookie(JwtToken jwtToken = null)
+		{
+			Cookie refreshTokenCookie = CreateTokenCookie(Assets.Secrets.RefreshTokenCookieName, jwtToken);
+			refreshTokenCookie.Options.Path = Url.Combine(Assets.Config.PathBase, "/auth");
+			return refreshTokenCookie;
+		}
+
+		public static Cookie CreateAccessTokenCookie(JwtToken jwtToken = null) =>
+			CreateTokenCookie(Assets.Secrets.AccessTokenCookieName, jwtToken);
+
+		private static Cookie CreateTokenCookie(string key, JwtToken jwtToken)
+		{
+			if (jwtToken == null)
+			{
+				jwtToken = new JwtToken();
+			}
+			CookieOptions cookieOptions = new CookieOptions();
+			cookieOptions.Expires = jwtToken.ExpirationDate;
+			//cookieOptions.Expires = DateTime.UtcNow.AddDays(15);
+
+			Cookie cookie = new Cookie
+			{
+				Key = key,
+				Value = jwtToken.Value,
+				Options = cookieOptions
+			};
+			return cookie;
+		}
+
+		private static DateTime AccessTokenExpirationFromNow() =>
+			DateTime.UtcNow.AddMinutes(Assets.Config.AccessTokenValidityInMinutes);
+			//DateTime.UtcNow.AddSeconds(20);
+
+		private static DateTime RefreshTokenExpirationFromNow() =>
+			DateTime.UtcNow.AddDays(Assets.Config.RefreshTokenValidityInDays);
+			//DateTime.UtcNow.AddSeconds(21);
+
+		private static bool LifetimeValidator(
+			DateTime? notBefore,
+			DateTime? expires,
+			SecurityToken securityToken,
+			TokenValidationParameters validationParameters) {
+			return !(expires < DateTime.UtcNow);
 		}
 	}
 }
